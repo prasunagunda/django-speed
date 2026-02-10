@@ -1,206 +1,84 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Client-Side Speed Test</title>
-  <style>
-    body{font-family:Arial,Helvetica,sans-serif;background:#071227;color:#eaf3ff;text-align:center;padding:28px}
-    .card{max-width:860px;margin:0 auto;background:linear-gradient(180deg,#08142a,#071227);padding:24px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,0.6)}
-    h1{margin:0 0 6px;font-size:26px}
-    .sub{color:#9fb0c6;margin-bottom:12px}
-    .netbox{background:#0f253c;padding:10px;border-radius:10px;margin:10px 0;font-weight:700}
-
-    .gauge{width:260px;height:260px;margin:18px auto;position:relative}
-    svg{transform:rotate(-90deg)}
-    circle{fill:none;stroke-width:16}
-    .bg{stroke:#122338}
-    .meter{stroke: url(#ggrad); stroke-linecap:round; transition:stroke-dashoffset 700ms ease}
-
-    .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-    .speed{font-size:36px;font-weight:800}
-    .unit{color:#9fb0c6}
-
-    .row{display:flex;justify-content:space-between;margin-top:18px}
-    .col{flex:1}
-    .stat{font-size:16px}
-    .stat small{display:block;color:#9fb0c6}
-
-    button{margin-top:20px;padding:12px 20px;border-radius:10px;border:none;background:linear-gradient(90deg,#00e0ff,#3ec4ff);font-size:16px;font-weight:800;cursor:pointer}
-    button:disabled{opacity:0.6;cursor:default}
-    #message{margin-top:10px;color:#9fb0c6}
-  </style>
+<meta charset="utf-8">
+<title>Speed Test</title>
+<style>
+body{background:#071227;color:#fff;font-family:Arial;text-align:center;padding:20px}
+.card{max-width:800px;margin:auto;background:#08142a;padding:20px;border-radius:12px}
+button{padding:12px 20px;margin-top:20px;background:#00e0ff;border:none;border-radius:8px;font-weight:bold}
+</style>
 </head>
 <body>
-  <div class="card">
-    <h1>📶 Speed Test (Client-Side)</h1>
-    <div class="sub">Measures download, upload and ping from your browser</div>
 
-    <div class="netbox">Network: <span id="net">Loading...</span></div>
+<div class="card">
+<h1>📶 Client Speed Test</h1>
+<div>Network: <b id="net">Loading...</b></div>
 
-    <div class="gauge" aria-hidden>
-      <svg width="260" height="260">
-        <defs>
-          <linearGradient id="ggrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stop-color="#00f0ff"/>
-            <stop offset="100%" stop-color="#00ffa2"/>
-          </linearGradient>
-        </defs>
-        <circle class="bg" cx="130" cy="130" r="110" />
-        <circle id="meter" class="meter" cx="130" cy="130" r="110"
-          stroke-dasharray="691" stroke-dashoffset="691" />
-      </svg>
+<h2 id="speed">0 Mbps</h2>
 
-      <div class="center">
-        <div id="speed" class="speed">0</div>
-        <div class="unit">Mbps Download</div>
-      </div>
-    </div>
+<div>
+Download: <span id="download">—</span><br>
+Upload: <span id="upload">—</span><br>
+Ping: <span id="ping">—</span>
+</div>
 
-    <div class="row">
-      <div class="col stat"><small>Download</small><span id="download">—</span></div>
-      <div class="col stat"><small>Upload</small><span id="upload">—</span></div>
-      <div class="col stat"><small>Ping</small><span id="ping">—</span></div>
-    </div>
-
-    <button id="btn" onclick="startAll()">🚀 Run Client Speed Test</button>
-    <div id="message"></div>
-  </div>
+<button onclick="startTest()">Run Speed Test</button>
+<div id="msg"></div>
+</div>
 
 <script>
-  const meter = document.getElementById('meter');
-  const speedEl = document.getElementById('speed');
-
-  function setGauge(mbps){
-    const max = 1000;
-    const radius = 110;
-    const circumference = 2 * Math.PI * radius;
-    const val = Math.min(mbps, max);
-    const offset = circumference - (val / max) * circumference;
-    meter.style.strokeDashoffset = offset;
-    speedEl.innerText = Math.round(mbps);
+async function loadNetwork(){
+  try{
+    const r = await fetch('/network/');
+    const d = await r.json();
+    document.getElementById('net').innerText =
+      d.isp + (d.city ? " • "+d.city : "");
+  }catch{
+    document.getElementById('net').innerText="Unknown";
   }
+}
 
-  async function loadNetwork(){
-    const netEl = document.getElementById('net');
-    try {
-      const r = await fetch('/network/?t='+Date.now());
-      if (r.ok){
-        const d = await r.json();
-        let display = d.isp || 'Unknown';
-        if (d.city) display += ' • ' + d.city;
-        netEl.innerText = display;
-        return;
-      }
-    } catch(e){}
-    netEl.innerText = navigator.connection ? (navigator.connection.effectiveType || 'unknown') : 'Unknown';
-  }
+async function pingTest(){
+  const t0 = performance.now();
+  await fetch('/ping/');
+  return Math.round(performance.now()-t0);
+}
 
-  async function downloadTest(kb = 5120) {
-    const url = `/testfile/?kb=${kb}&cache=${Date.now()}`;
-    const start = performance.now();
-    const resp = await fetch(url, {cache: "no-store"});
-    if (!resp.body) { throw new Error("Streaming not supported by browser/server."); }
-    const reader = resp.body.getReader();
-    let received = 0;
-    while(true){
-      const {done, value} = await reader.read();
-      if (done) break;
-      received += value.byteLength;
-    }
-    const end = performance.now();
-    const durationSec = Math.max((end - start)/1000, 0.0001);
-    const bits = received * 8;
-    const mbps = (bits / durationSec) / 1_000_000;
-    return {mbps, bytes: received, duration: durationSec};
-  }
+async function downloadTest(){
+  const start = performance.now();
+  const resp = await fetch('/testfile/?kb=8192');
+  const blob = await resp.blob();
+  const end = performance.now();
+  const mbps = (blob.size*8)/((end-start)/1000)/1e6;
+  return mbps;
+}
 
-  async function uploadTest(mb = 4) {
-    const size = Math.max(1, Math.min(mb, 20)) * 1024 * 1024;
-    const data = new Uint8Array(1024 * 1024);
-    const parts = Math.ceil(size / data.byteLength);
-    const blobs = new Array(parts).fill(data);
-    const body = new Blob(blobs);
+async function uploadTest(){
+  const data = new Blob([new Uint8Array(4*1024*1024)]);
+  const start = performance.now();
+  await fetch('/upload-test/',{method:'POST',body:data});
+  const end = performance.now();
+  return (data.size*8)/((end-start)/1000)/1e6;
+}
 
-    function getCookie(name) {
-      const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-      return v ? v.pop() : '';
-    }
-    const csrftoken = getCookie('csrftoken');
-
-    const start = performance.now();
-    const resp = await fetch('/upload-test/', {
-      method: 'POST',
-      headers: csrftoken ? {'X-CSRFToken': csrftoken} : {},
-      body: body
-    });
-    const end = performance.now();
-    const durationSec = Math.max((end - start)/1000, 0.0001);
-    const bits = size * 8;
-    const mbps = (bits / durationSec) / 1_000_000;
-    return {mbps, bytes: size, duration: durationSec, ok: resp.ok};
-  }
-
-  async function pingTest(runs = 4) {
-    let times = [];
-    for (let i=0;i<runs;i++){
-      const start = performance.now();
-      try {
-        await fetch('/ping/?t=' + Date.now(), {cache:"no-store"});
-        const end = performance.now();
-        times.push(end - start);
-      } catch(e) {
-        times.push(999);
-      }
-      await new Promise(res=>setTimeout(res, 120));
-    }
-    times.sort((a,b)=>a-b);
-    const mid = Math.floor(times.length/2);
-    const median = times.length % 2 ? times[mid] : (times[mid-1]+times[mid])/2;
-    return Math.round(median);
-  }
-
-  async function startAll(){
-    const btn = document.getElementById('btn');
-    const msg = document.getElementById('message');
-    btn.disabled = true;
-    msg.innerText = 'Running... (this may take ~10-40s depending on sizes)';
-
-    const anim = setInterval(()=> setGauge(Math.random()*300), 150);
-
-    try {
-      await loadNetwork();
-
-      const dlRuns = 3;
-      const dlResults = [];
-      for (let i=0;i<dlRuns;i++){
-        const kb = [4096, 8192, 12288][i % 3];
-        const r = await downloadTest(kb);
-        dlResults.push(r.mbps);
-      }
-      dlResults.sort((a,b)=>a-b);
-      const downloadMbps = dlResults[Math.floor(dlResults.length/2)];
-
-      const upload = await uploadTest(4);
-      const ping = await pingTest(4);
-
-      setGauge(downloadMbps);
-      document.getElementById('download').innerText = downloadMbps.toFixed(2) + ' Mbps';
-      document.getElementById('upload').innerText = upload.mbps.toFixed(2) + ' Mbps';
-      document.getElementById('ping').innerText = ping + ' ms';
-      msg.innerText = 'Completed';
-    } catch (err) {
-      console.error(err);
-      msg.innerText = 'Error: ' + (err.message || err);
-    } finally {
-      clearInterval(anim);
-      btn.disabled = false;
-    }
-  }
-
+async function startTest(){
+  document.getElementById('msg').innerText="Running...";
   loadNetwork();
-  setInterval(loadNetwork, 15000);
-  setGauge(0);
+
+  const ping = await pingTest();
+  const dl = await downloadTest();
+  const ul = await uploadTest();
+
+  document.getElementById('download').innerText=dl.toFixed(2)+" Mbps";
+  document.getElementById('upload').innerText=ul.toFixed(2)+" Mbps";
+  document.getElementById('ping').innerText=ping+" ms";
+  document.getElementById('speed').innerText=dl.toFixed(1)+" Mbps";
+  document.getElementById('msg').innerText="Completed";
+}
+
+loadNetwork();
 </script>
+
 </body>
 </html>
