@@ -7,5 +7,6 @@ urlpatterns = [
     path("testfile/", views.testfile, name="testfile"),
     path("upload-test/", views.upload_test, name="upload_test"),
     path("ping/", views.ping, name="ping"),
-    path("network/", views.network, name="network"),   # optional: your ISP lookup endpoint
+    path("network/", views.network, name="network"),
+    path("server-speed/", views.server_speed, name="server_speed"),
 ]
